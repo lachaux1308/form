@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .form-container {
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .error {
+            color: red;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .success {
+            color: green;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .registrations {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        .registration-item {
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <form id="registrationForm">
+            <div class="form-group">
+                <label for="name">Nom :</label>
+                <input type="text" id="name" name="name" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="email">Email :</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="people">Nombre de personnes :</label>
+                <select id="people" name="people" required>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                </select>
+                <div id="peopleError" class="error"></div>
+            </div>
+            
+            <button type="submit" id="submitButton">S'inscrire</button>
+            <div id="submitSuccess" class="success"></div>
+            <div id="submitError" class="error"></div>
+        </form>
+
+        <div class="loading" id="loading">Chargement...</div>
+
+        <div class="registrations">
+            <h3>Inscriptions actuelles</h3>
+            <div id="registrationsList"></div>
+            <p>Total personnes inscrites : <span id="totalPeople">0</span>/10</p>
+        </div>
+    </div>
+
+    <script>
+        // Configuration de l'API Google Apps Script
+        const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxODhknSz9yMwB9GCY3hrAzG_Cor2cNY1M447JgL4PJuWjASRP2ZiUBKxHoJfyny1Xd/exec';
+        let totalPeople = 0;
+        let registrations = [];
+
+        // Fonction pour charger les données
+        async function loadRegistrations() {
+            document.getElementById('loading').style.display = 'block';
+            try {
+                const response = await fetch(`${SCRIPT_URL}?action=read`);
+                const data = await response.json();
+                registrations = data.registrations || [];
+                totalPeople = registrations.reduce((sum, reg) => sum + parseInt(reg.people), 0);
+                updateDisplay();
+            } catch (error) {
+                console.error('Erreur lors du chargement:', error);
+                document.getElementById('submitError').textContent = 'Erreur lors du chargement des données';
+            }
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Fonction pour sauvegarder une inscription
+        async function saveRegistration(formData) {
+            document.getElementById('loading').style.display = 'block';
+            try {
+                const response = await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        action: 'write',
+                        data: formData
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    document.getElementById('submitSuccess').textContent = 'Inscription enregistrée !';
+                    await loadRegistrations();
+                } else {
+                    throw new Error(result.error || 'Erreur lors de l\'enregistrement');
+                }
+            } catch (error) {
+                console.error('Erreur lors de la sauvegarde:', error);
+                document.getElementById('submitError').textContent = 'Erreur lors de l\'enregistrement';
+            }
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Mise à jour de l'affichage
+        function updateDisplay() {
+            const list = document.getElementById('registrationsList');
+            const total = document.getElementById('totalPeople');
+            const peopleSelect = document.getElementById('people');
+            const submitButton = document.getElementById('submitButton');
+            const peopleError = document.getElementById('peopleError');
+
+            // Mise à jour de la liste
+            list.innerHTML = registrations.map(reg => 
+                `<div class="registration-item">
+                    ${reg.name} - ${reg.people} personne(s)
+                </div>`
+            ).join('');
+
+            // Mise à jour du total
+            total.textContent = totalPeople;
+
+            // Gestion des options disponibles
+            Array.from(peopleSelect.options).forEach(option => {
+                const value = parseInt(option.value);
+                option.disabled = (totalPeople + value > 10);
+            });
+
+            // État du bouton
+            if (Array.from(peopleSelect.options).every(opt => opt.disabled)) {
+                submitButton.disabled = true;
+                peopleError.textContent = "La limite de 10 personnes est atteinte";
+            } else {
+                submitButton.disabled = false;
+                peopleError.textContent = "";
+            }
+        }
+
+        // Gestionnaire de soumission du formulaire
+        document.getElementById('registrationForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            document.getElementById('submitSuccess').textContent = '';
+            document.getElementById('submitError').textContent = '';
+
+            const formData = {
+                name: this.name.value,
+                email: this.email.value,
+                people: parseInt(this.people.value),
+                timestamp: new Date().toISOString()
+            };
+
+            if (totalPeople + formData.people > 10) {
+                document.getElementById('submitError').textContent = "Désolé, la limite de 10 personnes serait dépassée";
+                return;
+            }
+
+            await saveRegistration(formData);
+            this.reset();
+        });
+
+        // Chargement initial
+        loadRegistrations();
+    </script>
+</body>
+</html>
